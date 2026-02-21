@@ -1,0 +1,45 @@
+
+name: Build and Push to ACR
+
+on: 
+  push:
+    branches:
+      - main
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  REGISTRY: healthcareacrdev.azurecr.io
+  IMAGE_NAME_A: patient-service
+  IMAGE_NAME_B: appointment-service
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: az acr login --name $REGISTRY
+
+      - name: Build and Push Service A
+        run: |
+          IMAGE=$REGISTRY/$IMAGE_NAME_A:latest
+          docker build -f Patient-Service/Dockerfile -t $IMAGE Patient-Service
+          docker push $IMAGE
+
+      - name: Build and Push Service B
+        run: |
+          IMAGE=$REGISTRY/$IMAGE_NAME_B:latest
+          docker build -f Appointment-Service/Dockerfile -t $IMAGE Appointment-Service
+          docker push $IMAGE

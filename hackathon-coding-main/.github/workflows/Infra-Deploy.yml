@@ -1,0 +1,71 @@
+name: Terraform AKS Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - prod
+
+permissions:
+  id-token: write   # REQUIRED for OIDC
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init and Log State Location
+        id: init
+        run: |
+          # Capture the init output to a file while still showing it in the console
+          terraform init -no-color | tee init_output.txt
+          
+          echo "------------------------------------------------------------"
+          echo "AUDIT: IDENTIFYING TERRAFORM STATE SOURCE"
+          
+          # Extract the backend initialization line
+          STATE_SOURCE=$(grep -i "Initializing the backend" init_output.txt -A 1 | tail -n 1)
+          
+          if [ -z "$STATE_SOURCE" ]; then
+            echo "STATE LOCATION: Local or No Backend Defined"
+          else
+            echo "STATE LOCATION: $STATE_SOURCE"
+          fi
+          echo "------------------------------------------------------------"
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: |
+          terraform plan \
+            -var-file="dev.terraform.tfvars" \
+            -out=tfplan
+
+      - name: Terraform Apply
+        run: |
+          terraform apply -auto-approve tfplan
